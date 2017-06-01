@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+	"regexp"
+	"fmt"
 )
 
 type Handler func(Decoder, interface{}) (interface{}, error)
@@ -30,21 +32,22 @@ type Decoder struct {
 	jsd      *json.Decoder
 	decoders map[string]Handler
 	cache    *RollingCache
+	stdTypes bool
 }
 
 // NewDecoder returns a new Decoder, ready to read from r.
-func NewDecoder(r io.Reader) *Decoder {
+func NewDecoder(r io.Reader, std bool) *Decoder {
 	jsd := json.NewDecoder(r)
-	return NewJsonDecoder(jsd)
+	return NewJsonDecoder(jsd, std)
 }
 
 // NewDecoder returns a new Decoder, ready to read from jsr.
-func NewJsonDecoder(jsd *json.Decoder) *Decoder {
+func NewJsonDecoder(jsd *json.Decoder, std bool) *Decoder {
 	jsd.UseNumber()
 
 	decoders := make(map[string]Handler)
 
-	d := Decoder{jsd: jsd, decoders: decoders, cache: NewRollingCache()}
+	d := Decoder{jsd: jsd, decoders: decoders, cache: NewRollingCache(), stdTypes: std}
 	initHandlers(&d)
 
 	return &d
@@ -120,7 +123,7 @@ func (d Decoder) parseSingleEntryMap(m map[string]interface{}) (interface{}, err
 		if err != nil {
 			return nil, err
 		}
-
+		fmt.Printf("KEY:%v\n",key)
 		if tag, isTag := key.(TagId); isTag {
 			tv := TaggedValue{Tag: tag, Value: value}
 			valueDecoder := d.DecoderFor(tag)
@@ -147,6 +150,7 @@ func (d Decoder) parseMultiEntryMap(m map[string]interface{}) (interface{}, erro
 			return nil, err
 		}
 
+		fmt.Printf("KEY2:%v\n",key)
 		result[key] = value
 	}
 
@@ -211,6 +215,8 @@ func (d Decoder) parseArrayMap(x []interface{}) (interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		fmt.Printf("KEY3:%v\n",key)
 		result[key] = value
 	}
 
@@ -315,8 +321,17 @@ func (d Decoder) Decode() (interface{}, error) {
 }
 
 // DecodeFromString is a handly function that decodes Transit data held in a string.
-func DecodeFromString(s string) (interface{}, error) {
+func DecodeFromString(s string, std bool) (interface{}, error) {
 	reader := strings.NewReader(s)
-	decoder := NewDecoder(reader)
+	decoder := NewDecoder(reader, std)
 	return decoder.Decode()
+}
+
+// removing starting colons from keys
+func keyfix(k interface{}) (interface{}) {
+	re := regexp.MustCompile("^\\:")
+	if re.MatchString(k.(string)) {
+		k = re.ReplaceAllString(k.(string), "")
+	}
+	return k
 }
